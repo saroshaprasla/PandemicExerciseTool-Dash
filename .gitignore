@@ -1,9 +1,34 @@
 # Docker
-.env
 docker-compose.override.yml
+
+# misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# yarn
+.yarn/*
+!.yarn/cache
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# mongo
+mongo-data/*
+!/mongo-data/.canary
 
 # Python
 __pycache__/
+.python-version
 *.py[cod]
 *$py.class
 *.so
@@ -15,7 +40,6 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Database files
-*.sqlite3
 *.db
 data/
 journal/
@@ -57,6 +81,16 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# dependencies
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
 
 # Jupyter Notebook
 .ipynb_checkpoints

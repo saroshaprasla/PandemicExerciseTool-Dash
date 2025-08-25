@@ -161,10 +161,7 @@ This project builds upon:
 - [PandemicExerciseTool](https://github.com/TACC/PandemicExerciseTool) - Original React frontend
 - [PandemicExerciseSimulator](https://github.com/TACC/PandemicExerciseSimulator) - SEATIRD simulation engine
 
-## 🤖 Development
 
-**Generated with Claude Code**  
-Co-Authored-By: Claude <noreply@anthropic.com>
 
 ## 📄 License
 

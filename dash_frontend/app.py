@@ -47,7 +47,244 @@ def load_texas_data():
         logger.warning(f"Could not load Texas data: {e}")
         return ['Harris', 'Dallas', 'Tarrant', 'Bexar'], {'Harris': '201', 'Dallas': '113'}
 
+def load_texas_geojson():
+    """Load Texas counties GeoJSON data"""
+    try:
+        with open('texasOutline.json', 'r') as f:
+            texas_geojson = json.load(f)
+        return texas_geojson
+    except Exception as e:
+        logger.warning(f"Could not load Texas GeoJSON: {e}")
+        return None
+
 texas_counties, texas_mapping = load_texas_data()
+texas_geojson = load_texas_geojson()
+
+def get_county_color(infected_value, view_type='count'):
+    """Get color for county based on infection data"""
+    if view_type == 'percent':
+        # Color scale for percentage values
+        if infected_value > 40:
+            return '#800026'
+        elif infected_value > 30:
+            return '#BD0026'
+        elif infected_value > 20:
+            return '#E31A1C'
+        elif infected_value > 10:
+            return '#FC4E2A'
+        elif infected_value > 5:
+            return '#FD8D3C'
+        elif infected_value > 2.5:
+            return '#FEB24C'
+        elif infected_value > 1:
+            return '#FED976'
+        else:
+            return '#FFEDA0'
+    else:
+        # Color scale for count values (matching React version)
+        if infected_value > 5000:
+            return '#800026'
+        elif infected_value > 2000:
+            return '#BD0026'
+        elif infected_value > 1000:
+            return '#E31A1C'
+        elif infected_value > 500:
+            return '#FC4E2A'
+        elif infected_value > 200:
+            return '#FD8D3C'
+        elif infected_value > 100:
+            return '#FEB24C'
+        elif infected_value > 50:
+            return '#FED976'
+        else:
+            return '#FFEDA0'
+
+def create_county_choropleth(event_data, timeline_value, view_type):
+    """Create county-level map using individual county polygons to match React UI exactly"""
+    
+    if not event_data or timeline_value is None or timeline_value >= len(event_data):
+        return create_empty_map()
+    
+    current_data = event_data[timeline_value]
+    counties_data = current_data.get('counties', [])
+    
+    logger.info(f"Creating county map for day {current_data.get('day', 0)} with {len(counties_data)} counties")
+    
+    if not counties_data or not texas_geojson:
+        return create_empty_map()
+    
+    # Create data mapping from FIPS to values
+    county_values = {}
+    county_info = {}
+    
+    for county in counties_data:
+        fips = county.get('fips', '').strip()
+        if not fips:
+            continue
+            
+        # Ensure FIPS format matches GeoJSON geoid (48XXX format)
+        if len(fips) == 3:
+            full_fips = f"48{fips}"
+        elif len(fips) == 5 and fips.startswith('48'):
+            full_fips = fips
+        else:
+            full_fips = f"48{fips.zfill(3)}"
+        
+        if view_type == 'percent':
+            value = county.get('infectedPercent', 0)
+        else:
+            value = county.get('infected', 0)
+        
+        county_values[full_fips] = value
+        county_info[full_fips] = {
+            'infected': county.get('infected', 0),
+            'deceased': county.get('deceased', 0),
+            'infectedPercent': county.get('infectedPercent', 0),
+            'deceasedPercent': county.get('deceasedPercent', 0)
+        }
+        
+        # Debug logging for first few counties
+        if len(county_values) <= 3:
+            logger.info(f"County {full_fips}: infected={county.get('infected', 0)}, percent={county.get('infectedPercent', 0)}")
+    
+    logger.info(f"Mapped {len(county_values)} counties to FIPS codes")
+    
+    # Get max value for color scale
+    max_value = max(county_values.values()) if county_values.values() else 1
+    if max_value == 0:
+        max_value = 1
+    
+    # Define color function
+    def get_color_from_value(value, max_val):
+        if max_val == 0 or value == 0:
+            return '#FFEDA0'
+        
+        ratio = value / max_val
+        
+        if ratio >= 1.0:
+            return '#800026'
+        elif ratio >= 0.75:
+            return '#BD0026'
+        elif ratio >= 0.625:
+            return '#E31A1C'
+        elif ratio >= 0.5:
+            return '#FC4E2A'
+        elif ratio >= 0.375:
+            return '#FD8D3C'
+        elif ratio >= 0.25:
+            return '#FEB24C'
+        elif ratio >= 0.125:
+            return '#FED976'
+        else:
+            return '#FFEDA0'
+    
+    # Create figure with individual county shapes
+    fig = go.Figure()
+    
+    # Add each county as a separate trace
+    for feature in texas_geojson['features']:
+        geoid = feature['properties']['geoid']
+        county_name = feature['properties']['name']
+        
+        value = county_values.get(geoid, 0)
+        color = get_color_from_value(value, max_value)
+        
+        info = county_info.get(geoid, {})
+        infected = info.get('infected', 0)
+        deceased = info.get('deceased', 0)
+        infected_pct = info.get('infectedPercent', 0)
+        deceased_pct = info.get('deceasedPercent', 0)
+        
+        # Extract coordinates for the county polygon
+        coordinates = feature['geometry']['coordinates']
+        
+        # Handle MultiPolygon vs Polygon
+        if feature['geometry']['type'] == 'MultiPolygon':
+            for polygon in coordinates:
+                for ring in polygon:
+                    lons = [coord[0] for coord in ring]
+                    lats = [coord[1] for coord in ring]
+                    
+                    fig.add_trace(go.Scatter(
+                        x=lons,
+                        y=lats,
+                        fill='toself',
+                        fillcolor=color,
+                        line=dict(color='darkgray', width=0.5),
+                        mode='lines',
+                        name=county_name,
+                        showlegend=False,
+                        text=f'{county_name} County<br>Infected: {infected:,}<br>Deceased: {deceased:,}<br>Infected %: {infected_pct:.1f}%<br>Deceased %: {deceased_pct:.1f}%',
+                        hoverinfo='text'
+                    ))
+        else:
+            # Single Polygon
+            for ring in coordinates:
+                lons = [coord[0] for coord in ring]
+                lats = [coord[1] for coord in ring]
+                
+                fig.add_trace(go.Scatter(
+                    x=lons,
+                    y=lats,
+                    fill='toself',
+                    fillcolor=color,
+                    line=dict(color='darkgray', width=0.5),
+                    mode='lines',
+                    name=county_name,
+                    showlegend=False,
+                    text=f'{county_name} County<br>Infected: {infected:,}<br>Deceased: {deceased:,}<br>Infected %: {infected_pct:.1f}%<br>Deceased %: {deceased_pct:.1f}%',
+                    hoverinfo='text'
+                ))
+    
+    # Configure layout to match React version exactly
+    fig.update_layout(
+        title=f"Day {current_data.get('day', 0)} - Texas Counties ({'Percentage' if view_type == 'percent' else 'Count'} View)",
+        height=400,
+        margin=dict(l=0, r=0, t=40, b=0),
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        xaxis=dict(
+            showgrid=False,
+            showticklabels=False,
+            zeroline=False,
+            range=[-106.0, -93.0]
+        ),
+        yaxis=dict(
+            showgrid=False,
+            showticklabels=False,
+            zeroline=False,
+            range=[25.0, 37.0],
+            scaleanchor="x",
+            scaleratio=1
+        ),
+        hovermode='closest'
+    )
+    
+    logger.info("Successfully created county map with individual polygons")
+    return fig
+
+def create_empty_map():
+    """Create empty map when no data is available"""
+    fig = go.Figure()
+    fig.update_layout(
+        title="Texas Counties - No Data Available",
+        geo=dict(
+            scope='usa',
+            projection=go.layout.geo.Projection(type='albers usa'),
+            showframe=False,
+            showcoastlines=False,
+            showlakes=False,
+            bgcolor='white',
+            center=dict(lat=31.0, lon=-99.0),
+            lonaxis_range=[-106.0, -93.0],
+            lataxis_range=[25.0, 37.0]
+        ),
+        height=400,
+        margin=dict(l=0, r=0, t=40, b=0),
+        paper_bgcolor='white',
+        plot_bgcolor='white'
+    )
+    return fig
 
 # Age group constants (matching React exactly)
 AGE_GROUPS = [
@@ -1456,45 +1693,8 @@ def fetch_simulation_data(n_intervals, sim_state, event_data):
      Input('view-toggle', 'value')]
 )
 def update_map(event_data, timeline_value, view_type):
-    if not event_data or timeline_value is None or timeline_value >= len(event_data):
-        fig = go.Figure()
-        fig.update_layout(
-            title="Texas Counties - No Data Available",
-            geo=dict(scope='usa', projection=go.layout.geo.Projection(type='albers usa')),
-            height=400
-        )
-        return fig
-    
-    current_data = event_data[timeline_value]
-    
-    # Create Texas choropleth map
-    fig = go.Figure()
-    
-    # Add Texas state shape with infection data
-    fig.add_trace(go.Choropleth(
-        locations=['TX'],
-        z=[current_data.get('totalInfectedCount', 0)],
-        locationmode='USA-states',
-        colorscale='Reds',
-        text=[f"Texas - Day {current_data.get('day', 0)}"],
-        hovertemplate='<b>%{text}</b><br>Total Infected: %{z}<extra></extra>',
-        showscale=True,
-        colorbar=dict(title=f"Infected ({'%' if view_type == 'percent' else 'Count'})")
-    ))
-    
-    fig.update_layout(
-        title=f"Day {current_data.get('day', 0)} - Texas Disease Spread ({'Percentage' if view_type == 'percent' else 'Count'} View)",
-        geo=dict(
-            scope='usa',
-            projection=go.layout.geo.Projection(type='albers usa'),
-            showlakes=True,
-            lakecolor='rgb(255, 255, 255)',
-        ),
-        height=400,
-        margin=dict(l=0, r=0, t=40, b=0)
-    )
-    
-    return fig
+    """Update map with county-level choropleth visualization"""
+    return create_county_choropleth(event_data, timeline_value, view_type)
 
 @callback(
     Output('line-chart', 'figure'),
@@ -1568,12 +1768,23 @@ def update_table(event_data, timeline_value, view_type):
     table_data = []
     for county in counties_data:
         fips = county.get('fips', 'Unknown')
-        # Map FIPS back to county name
+        # Map FIPS back to county name using GeoJSON data
         county_name = None
-        for name, mapped_fips in texas_mapping.items():
-            if mapped_fips == fips:
-                county_name = name
-                break
+        
+        # First try to get from GeoJSON data
+        if texas_geojson:
+            geoid = f"48{fips.zfill(3)}"
+            for feature in texas_geojson['features']:
+                if feature['properties']['geoid'] == geoid:
+                    county_name = feature['properties']['name']
+                    break
+        
+        # Fallback to mapping file
+        if not county_name:
+            for name, mapped_fips in texas_mapping.items():
+                if mapped_fips == fips:
+                    county_name = name
+                    break
         
         if not county_name:
             county_name = f"County {fips}"

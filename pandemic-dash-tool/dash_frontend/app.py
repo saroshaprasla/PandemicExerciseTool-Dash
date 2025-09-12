@@ -1803,7 +1803,7 @@ def update_table(event_data, timeline_value, view_type):
         table_data.append([county_name, infected_val, deceased_val])
     
     # Create table
-      # Create table
+    
     table = dbc.Table([
         html.Thead([
             html.Tr([

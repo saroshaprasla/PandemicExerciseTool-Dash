@@ -1790,8 +1790,39 @@ def update_table(event_data, timeline_value, view_type):
                     county_name = name
                     break
         
+            # Handle different FIPS formats - the fips might be full 5-digit (48XXX) or just 3-digit (XXX)
+        if len(fips) == 5 and fips.startswith('48'):
+            # Full FIPS code like "48419"
+            geoid = fips
+            short_fips = fips[2:]  # Remove "48" prefix for mapping lookup
+        elif len(fips) == 3:
+            # 3-digit FIPS code like "419"
+            geoid = f"48{fips}"
+            short_fips = fips
+        else:
+            # Handle other formats
+            geoid = f"48{fips.zfill(3)}"
+            short_fips = fips.zfill(3)
+
+     
+        if texas_geojson:
+            for feature in texas_geojson['features']:
+                if feature['properties']['geoid'] == geoid:
+                    county_name = feature['properties']['name']
+                    break
+
+        # Fallback to mapping file using short FIPS
         if not county_name:
-            county_name = f"County {fips}"
+            # Remove leading zeros from short_fips for comparison
+            short_fips_no_zero = short_fips.lstrip('0')
+            for name, mapped_fips in texas_mapping.items():
+                if mapped_fips == short_fips_no_zero:
+                    county_name = name
+                    break
+
+        # Final fallback - show readable county name instead of number
+        if not county_name:
+            county_name = f"County {short_fips}"
         
         if view_type == 'percent':
             infected_val = f"{county.get('infectedPercent', 0):.1f}%"

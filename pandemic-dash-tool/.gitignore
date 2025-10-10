@@ -15,8 +15,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Database files
-*.sqlite3
-*.db
+
 data/
 journal/
 

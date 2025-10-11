@@ -446,12 +446,14 @@ def create_home_layout():
                         
                         # Dropdown menu
                         html.Div([
-                            html.Button('Disease Parameters', 
+                            html.Button('Disease Parameters',
                                 id='disease-params-btn',
-                                className='dropdown-items'),
+                                className='dropdown-items',
+                                n_clicks=0),
                             html.Button('Initial Cases',
-                                id='initial-cases-btn', 
-                                className='dropdown-items')
+                                id='initial-cases-btn',
+                                className='dropdown-items',
+                                n_clicks=0)
                         ],
                         id='scenario-dropdown',
                         style={'display': 'none'})
@@ -468,15 +470,18 @@ def create_home_layout():
                         
                         # Dropdown menu
                         html.Div([
-                            html.Button('Non-Pharmaceutical', 
+                            html.Button('Non-Pharmaceutical',
                                 id='npi-btn',
-                                className='dropdown-items'),
+                                className='dropdown-items',
+                                n_clicks=0),
                             html.Button('Antivirals',
-                                id='antivirals-btn', 
-                                className='dropdown-items'),
+                                id='antivirals-btn',
+                                className='dropdown-items',
+                                n_clicks=0),
                             html.Button('Vaccines',
-                                id='vaccines-btn', 
-                                className='dropdown-items')
+                                id='vaccines-btn',
+                                className='dropdown-items',
+                                n_clicks=0)
                         ],
                         id='interventions-dropdown',
                         style={'display': 'none'})
@@ -928,18 +933,23 @@ app.layout.children.extend([disease_params_modal, initial_cases_modal, npi_modal
 @callback(
     [Output('main-content', 'children'),
      Output('nav-home', 'className'),
-     Output('nav-userguide', 'className')],
+     Output('nav-userguide', 'className'),
+     Output('disease-params-modal', 'is_open', allow_duplicate=True),
+     Output('initial-cases-modal', 'is_open', allow_duplicate=True),
+     Output('npi-modal', 'is_open', allow_duplicate=True),
+     Output('antivirals-modal', 'is_open', allow_duplicate=True),
+     Output('vaccines-modal', 'is_open', allow_duplicate=True)],
     [Input('nav-home', 'n_clicks'),
      Input('nav-userguide', 'n_clicks')],
     prevent_initial_call=True
 )
 def navigate_pages(home_clicks, userguide_clicks):
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else 'nav-home'
-    
+
     if triggered_id == 'nav-userguide':
-        return create_userguide_layout(), 'tab-button', 'tab-button active'
+        return create_userguide_layout(), 'tab-button', 'tab-button active', False, False, False, False, False
     else:
-        return create_home_layout(), 'tab-button active', 'tab-button'
+        return create_home_layout(), 'tab-button active', 'tab-button', False, False, False, False, False
 
 # Initialize with home page
 @callback(
@@ -949,6 +959,66 @@ def navigate_pages(home_clicks, userguide_clicks):
 )
 def init_main_content(_):
     return create_home_layout()
+
+# Restore UI state after navigation completes
+@callback(
+    [Output('play-pause-btn', 'disabled', allow_duplicate=True),
+     Output('play-pause-btn', 'children', allow_duplicate=True),
+     Output('play-pause-btn', 'style', allow_duplicate=True),
+     Output('timeline-slider', 'disabled', allow_duplicate=True),
+     Output('timeline-slider', 'max', allow_duplicate=True),
+     Output('timeline-slider', 'value', allow_duplicate=True)],
+    Input('main-content', 'children'),
+    [State('simulation-state', 'data'),
+     State('disease-parameters', 'data'),
+     State('event-data', 'data')],
+    prevent_initial_call=True
+)
+def restore_ui_after_navigation(content, sim_state, disease_params, event_data):
+    """Restore play button and timeline after navigation creates new layout"""
+    # Only restore if we're on the home page (has play button)
+    # Check if content contains home layout by looking for play button
+    if not content or not isinstance(content, dict):
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    # Restore play button state
+    has_disease_params = bool(disease_params)
+    is_running = sim_state.get('isRunning', False)
+    play_disabled = not has_disease_params
+
+    if is_running:
+        play_text = 'Pause'
+        play_style = {
+            'padding': '10px 30px',
+            'fontSize': '16px',
+            'backgroundColor': '#ffc107',
+            'color': 'black',
+            'border': 'none',
+            'borderRadius': '4px',
+            'cursor': 'pointer',
+            'marginRight': '20px'
+        }
+    else:
+        play_text = 'Play'
+        play_style = {
+            'padding': '10px 30px',
+            'fontSize': '16px',
+            'backgroundColor': '#28a745',
+            'color': 'white',
+            'border': 'none',
+            'borderRadius': '4px',
+            'cursor': 'pointer',
+            'marginRight': '20px'
+        }
+
+    # Restore timeline state
+    timeline_disabled = not bool(event_data)
+    timeline_max = max(30, len(event_data)) if event_data else 30
+    timeline_value = len(event_data) - 1 if event_data else 0
+
+    logger.info(f"Restoring UI after navigation: play_disabled={play_disabled}, play_text={play_text}, timeline_value={timeline_value}")
+
+    return play_disabled, play_text, play_style, timeline_disabled, timeline_max, timeline_value
 
 # Dropdown toggle callbacks
 @callback(
@@ -975,7 +1045,7 @@ def toggle_interventions_dropdown(n_clicks, current_style):
         return {**current_style, 'display': display}
     return current_style
 
-# Modal toggle callbacks
+# Modal toggle callbacks - Fixed to prevent auto-opening
 @callback(
     Output('disease-params-modal', 'is_open'),
     [Input('disease-params-btn', 'n_clicks'),
@@ -985,12 +1055,21 @@ def toggle_interventions_dropdown(n_clicks, current_style):
     prevent_initial_call=True
 )
 def toggle_disease_params_modal(open_click, close_click, save_click, is_open):
-    if not open_click and not close_click and not save_click:
-        return False
-    # Toggle modal based on which button was clicked
-    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+    # Check which input triggered the callback
+    if not ctx.triggered:
+        return dash.no_update
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # Only toggle if the disease-params-btn was actually clicked (not just recreated)
+    if triggered_id == 'disease-params-btn' and open_click:
+        logger.info(f"Disease params button clicked: n_clicks={open_click}, current state={is_open}")
         return not is_open
-    return False
+    elif triggered_id in ['disease-params-close', 'disease-params-save'] and (close_click or save_click):
+        return False
+
+    # For any other case (like button recreation), preserve current state
+    return dash.no_update
 
 @callback(
     Output('initial-cases-modal', 'is_open'),
@@ -1001,12 +1080,18 @@ def toggle_disease_params_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_initial_cases_modal(open_click, close_click, save_click, is_open):
-    if not open_click and not close_click and not save_click:
-        return False
-    # Toggle modal based on which button was clicked
-    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+    if not ctx.triggered:
+        return dash.no_update
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'initial-cases-btn' and open_click:
+        logger.info(f"Initial cases button clicked: n_clicks={open_click}, current state={is_open}")
         return not is_open
-    return False
+    elif triggered_id in ['initial-cases-close', 'initial-cases-save'] and (close_click or save_click):
+        return False
+
+    return dash.no_update
 
 # Intervention modal toggle callbacks
 @callback(
@@ -1018,12 +1103,18 @@ def toggle_initial_cases_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_npi_modal(open_click, close_click, save_click, is_open):
-    if not open_click and not close_click and not save_click:
-        return False
-    # Toggle modal based on which button was clicked
-    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+    if not ctx.triggered:
+        return dash.no_update
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'npi-btn' and open_click:
+        logger.info(f"NPI button clicked: n_clicks={open_click}, current state={is_open}")
         return not is_open
-    return False
+    elif triggered_id in ['npi-close', 'npi-save'] and (close_click or save_click):
+        return False
+
+    return dash.no_update
 
 @callback(
     Output('antivirals-modal', 'is_open'),
@@ -1034,12 +1125,18 @@ def toggle_npi_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_antivirals_modal(open_click, close_click, save_click, is_open):
-    if not open_click and not close_click and not save_click:
-        return False
-    # Toggle modal based on which button was clicked
-    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+    if not ctx.triggered:
+        return dash.no_update
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'antivirals-btn' and open_click:
+        logger.info(f"Antivirals button clicked: n_clicks={open_click}, current state={is_open}")
         return not is_open
-    return False
+    elif triggered_id in ['antivirals-close', 'antivirals-save'] and (close_click or save_click):
+        return False
+
+    return dash.no_update
 
 @callback(
     Output('vaccines-modal', 'is_open'),
@@ -1050,12 +1147,18 @@ def toggle_antivirals_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_vaccines_modal(open_click, close_click, save_click, is_open):
-    if not open_click and not close_click and not save_click:
-        return False
-    # Toggle modal based on which button was clicked
-    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+    if not ctx.triggered:
+        return dash.no_update
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'vaccines-btn' and open_click:
+        logger.info(f"Vaccines button clicked: n_clicks={open_click}, current state={is_open}")
         return not is_open
-    return False
+    elif triggered_id in ['vaccines-close', 'vaccines-save'] and (close_click or save_click):
+        return False
+
+    return dash.no_update
 
 # Preset scenario loading callback
 @callback(
@@ -1448,6 +1551,7 @@ def create_interventions_display(npi_data, antiviral_data, vaccine_data):
     [Output('simulation-state', 'data'),
      Output('play-pause-btn', 'children'),
      Output('play-pause-btn', 'style'),
+     Output('play-pause-btn', 'disabled', allow_duplicate=True),
      Output('simulation-interval', 'disabled'),
      Output('timeline-slider', 'disabled', allow_duplicate=True)],
     Input('play-pause-btn', 'n_clicks'),
@@ -1575,18 +1679,18 @@ def toggle_simulation(n_clicks, sim_state, disease_params, initial_cases, npi_da
                             'cursor': 'pointer',
                             'marginRight': '20px'
                         }
-                        return new_state, 'Pause', button_style, False, False
+                        return new_state, 'Pause', button_style, False, False, False
                     else:
                         logger.error(f"Failed to start simulation run: {run_response.status_code}")
                 else:
                     logger.error(f"Failed to create simulation: {response.status_code}")
                 
                 # If API call failed, show error but don't start
-                return sim_state, 'Play', dash.no_update, True, True
-                
+                return sim_state, 'Play', dash.no_update, False, True, True
+
             except Exception as e:
                 logger.error(f"Error starting simulation: {e}")
-                return sim_state, 'Play', dash.no_update, True, True
+                return sim_state, 'Play', dash.no_update, False, True, True
         else:
             # Pause simulation - stop the task
             try:
@@ -1607,9 +1711,9 @@ def toggle_simulation(n_clicks, sim_state, disease_params, initial_cases, npi_da
                 'cursor': 'pointer',
                 'marginRight': '20px'
             }
-            return new_state, 'Play', button_style, True, False
-    
-    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+            return new_state, 'Play', button_style, False, True, False
+
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 # Simulation data fetching callback - gets real data from Django backend
 @callback(
@@ -1895,3 +1999,4 @@ server = app.server
 
 if __name__ == '__main__':
     app.run_server(debug=True, host='0.0.0.0', port=8051)
+                   

@@ -985,7 +985,12 @@ def toggle_interventions_dropdown(n_clicks, current_style):
     prevent_initial_call=True
 )
 def toggle_disease_params_modal(open_click, close_click, save_click, is_open):
-    return not is_open
+    if not open_click and not close_click and not save_click:
+        return False
+    # Toggle modal based on which button was clicked
+    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+        return not is_open
+    return False
 
 @callback(
     Output('initial-cases-modal', 'is_open'),
@@ -996,7 +1001,12 @@ def toggle_disease_params_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_initial_cases_modal(open_click, close_click, save_click, is_open):
-    return not is_open
+    if not open_click and not close_click and not save_click:
+        return False
+    # Toggle modal based on which button was clicked
+    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+        return not is_open
+    return False
 
 # Intervention modal toggle callbacks
 @callback(
@@ -1008,7 +1018,12 @@ def toggle_initial_cases_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_npi_modal(open_click, close_click, save_click, is_open):
-    return not is_open
+    if not open_click and not close_click and not save_click:
+        return False
+    # Toggle modal based on which button was clicked
+    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+        return not is_open
+    return False
 
 @callback(
     Output('antivirals-modal', 'is_open'),
@@ -1019,7 +1034,12 @@ def toggle_npi_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_antivirals_modal(open_click, close_click, save_click, is_open):
-    return not is_open
+    if not open_click and not close_click and not save_click:
+        return False
+    # Toggle modal based on which button was clicked
+    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+        return not is_open
+    return False
 
 @callback(
     Output('vaccines-modal', 'is_open'),
@@ -1030,7 +1050,12 @@ def toggle_antivirals_modal(open_click, close_click, save_click, is_open):
     prevent_initial_call=True
 )
 def toggle_vaccines_modal(open_click, close_click, save_click, is_open):
-    return not is_open
+    if not open_click and not close_click and not save_click:
+        return False
+    # Toggle modal based on which button was clicked
+    if ctx.triggered and ctx.triggered[0]['prop_id'] != '.':
+        return not is_open
+    return False
 
 # Preset scenario loading callback
 @callback(

@@ -23,7 +23,6 @@ A Python Dash-based pandemic simulation application that integrates with the rea
 ### One-Command Startup
 ```bash
 git clone https://github.com/saroshaprasla/PandemicExerciseTool-Dash.git
-cd PandemicExerciseTool-Dash
 docker-compose -f docker-compose-dash.yml up --build -d
 ```
 
